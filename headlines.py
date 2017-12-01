@@ -1,4 +1,5 @@
 # Render_template with GET-Request and Weather API, Currency Exchange Rate API
+# with select option html to choose the currency
 # https://github.com/Wasserratte/headlines.git
 # Headlines
 
@@ -25,7 +26,7 @@ DEFAULTS = {'publication':'bbc',   # If a request doesn't fit our code will fall
 
 WEATHER_URL = "http://api.openweathermap.org/data/2.5/weather?q={}&units=metric&appid=8b55a9ee343dcbbe22412e4aef9c9a12"
 
-#1
+
 CURRENCY_URL = "https://openexchangerates.org//api/latest.json?app_id=6adcf9db3f524cffa0b639afa66142f8"
 
 @app.route("/")         
@@ -52,18 +53,24 @@ def home():
 
     #get customized currency based on user input or default
 
-    currency_from = request.args.get("currency_from") #3
+    currency_from = request.args.get("currency_from") 
     if not currency_from:
         currency_from = DEFAULTS['currency_from']
 
-    currency_to = request.args.get("currency_to")   #4
+    currency_to = request.args.get("currency_to")   
     if not currency_to:
         currency_to = DEFAULTS['currency_to']
 
-    rate = get_rate(currency_from, currency_to) #5
+    rate, currencies = get_rate(currency_from, currency_to)
 
-    return render_template("home.html", articles=articles, weather=weather,
-                           currency_from=currency_from, currency_to=currency_to, rate=rate) #6
+    return render_template("home.html", articles=articles,      #1
+                           weather=weather,
+                           currency_from=currency_from, currency_to=currency_to,
+                           rate=rate,   # The calculated result for the currency exchange rate
+                           currencies=sorted(currencies)) # List for the home.html to loop over for the options
+
+  
+                          
 
 def get_news(query):
     if not query or query.lower() not in RSS_FEEDS:     
@@ -89,7 +96,7 @@ def get_weather(query):
     return weather
 
 
-def get_rate(frm, to):      #2
+def get_rate(frm, to):      
     all_currency = urllib2.urlopen(CURRENCY_URL).read() #Load data over HTTP into a Python-String 
 
     parsed = json.loads(all_currency).get('rates')     # Parse a json-string into a Python-Dictionary
@@ -104,7 +111,10 @@ def get_rate(frm, to):      #2
 
                                         # parsed.get() takes the keys from the Python-Dictionary
 
-    return to_rate/from_rate
+    return (to_rate / from_rate, parsed.keys())  # parsed.key() is the list of the json value as Python-Dictionary.
+                                                 # The parsed.keys() is the value for the currencies variable in the
+                                                 # home function that is rendert sorted to the home.html to create the
+                                                 # drop-down elements with all currencies from the json value
 
 
                                         
@@ -114,18 +124,11 @@ def get_rate(frm, to):      #2
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
 
-
-#1) Add the variable CURRENCY_URL to the globals with the webadress for openexchangerates
-
-#2) Add the get_rate() function to parse the information for the currencies
-
-#3) In the variable currency_from we store the value of the input of the website. Name of the
-#   parameter in request.args.get("currency_from") and the name in the html template has to be the same
-
-#4) In the variable currency_to we store the value of the input of the website. Name of the parameter
-#   in request.args.get("currency_to") and the name in the html template has to be the same.
-
-#5) In the variable rate we store the return values of the get_rate() function. We put in the values of
-#   the user input (currency_from and currency_to) as parameter for the function
-
-#6) We render the neccassery values to the home.html template.
+#1)
+#   Adding all the currencies to the select input. We'll make the list dynamic,
+#   insert the options using a for loop, and keep our template up-to-date and clean.
+#   To get the list of currencies, we can simply take the keys of our
+#   json "all_currency" object, in order to make our get_rate() function
+#   return a tuple--the calculated rate and the list of currencies.
+#   We can then pass the (sorted) list to our template, which can loop
+#   through them and use them to build the drop-down list

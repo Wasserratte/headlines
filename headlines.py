@@ -1,11 +1,12 @@
-# Render_template with GET-Request and Weather API, Currency Exchange Rate API
-# with select option html to choose the currency
+# Headlines with Cookies
 # https://github.com/Wasserratte/headlines.git
 # Headlines
 
+import datetime #1
 import feedparser
 from flask import Flask
 import json
+from flask import make_response #2
 from flask import render_template
 from flask import request
 import urllib 
@@ -29,45 +30,58 @@ WEATHER_URL = "http://api.openweathermap.org/data/2.5/weather?q={}&units=metric&
 
 CURRENCY_URL = "https://openexchangerates.org//api/latest.json?app_id=6adcf9db3f524cffa0b639afa66142f8"
 
+
+def get_value_with_fallback(key):   #7
+    if request.args.get(key):
+        return request.args.get(key)
+    if request.cookies.get(key):
+        return request.cookies.get(key)
+    return DEFAULTS[key]
+
+
+
+
 @app.route("/")         
     
 def home():      
 
     # get customized headlines, based on user input or default (from home.html)
 
-    publication = request.args.get('publication')
-
-    if not publication:
-        publication = DEFAULTS['publication']
-
+    publication = get_value_with_fallback("publication")
     articles = get_news(publication)
 
+   
     #get customized weather based on user input or default (from home.html)
 
-    city = request.args.get('city')
-
-    if not city:
-        city = DEFAULTS['city']
-
+    city = get_value_with_fallback("city")
     weather = get_weather(city)
 
     #get customized currency based on user input or default
 
-    currency_from = request.args.get("currency_from") 
-    if not currency_from:
-        currency_from = DEFAULTS['currency_from']
-
-    currency_to = request.args.get("currency_to")   
-    if not currency_to:
-        currency_to = DEFAULTS['currency_to']
-
+    currency_from = get_value_with_fallback("currency_from")
+    currency_to = get_value_with_fallback("currency_to")
     rate, currencies = get_rate(currency_from, currency_to)
 
-    return render_template("home.html", articles=articles,      #1
-                           weather=weather,
-                           currency_from=currency_from, currency_to=currency_to,
-                           rate=rate,   # The calculated result for the currency exchange rate
-                           currencies=sorted(currencies)) # List for the home.html to loop over for the options
+    #save cookies and return template
+    #3
+    response = make_response(render_template("home.html",
+                                             articles=articles,
+                                             weather=weather,
+                                             currency_from=currency_from,
+                                             currency_to=currency_to,
+                                             rate=rate,
+                                             currencies=sorted(currencies)))
+    #4
+    expires = datetime.datetime.now() + datetime.timedelta(days=365)
+
+    #5
+    response.set_cookie("publication", publication, expires=expires)
+    response.set_cookie("city", city, expires=expires)
+    response.set_cookie("currency_from", currency_from, expires=expires)
+    response.set_cookie("currency_to", currency_to, expires=expires)
+
+    #6
+    return response
 
   
                           
@@ -123,12 +137,66 @@ def get_rate(frm, to):
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
+    
 
-#1)
-#   Adding all the currencies to the select input. We'll make the list dynamic,
-#   insert the options using a for loop, and keep our template up-to-date and clean.
-#   To get the list of currencies, we can simply take the keys of our
-#   json "all_currency" object, in order to make our get_rate() function
-#   return a tuple--the calculated rate and the list of currencies.
-#   We can then pass the (sorted) list to our template, which can loop
-#   through them and use them to build the drop-down list
+# Cookies are key-value pairs. When we use cookies we go through this steps:
+# Set cookies--> Remember cookies--> Retriev user information, that are stored
+#                                    in the cookies
+
+#1) We'll use datetime library from Python to set the lifespan of our cookies
+
+#2) Flask's make_response() function to create a response object that we can
+#   set cookies on
+
+##############################################################################
+#                               Set cookies                                  #
+##############################################################################
+
+#   We create first the response object which stores the information which will be
+#   rendered to the home.html template later.
+#   This object will be used to set cookies which stores this userinformation
+#   on the users computer.
+#   Finally we return the entire response content-->render template and cookies
+
+#3) We wrap a make_response() call around our render_template() call instead
+#   of returning the rendered template directly. This means that our Jinja
+#   templates will be rendered, and all the placeholders(user input values)
+#   will be replaced with the correct values, but instead of returning
+#   this response directly to our users, we will load it into a variable so that
+#   we can make some more additions to it.
+
+#4) 
+#   Once we have this response object, we will create a datetime object with a
+#   value of 365 days from today's date. So long will the cookie exist on the
+#   users computer.
+
+#5)
+#   Then, we will do a series of set_cookie() calls on our response object,
+#   saving all the user's selections(or refreshing the previous defaults) and
+#   setting the expiry time to a year from the time the cookie was set using
+#   our datetime object. A cookie is make up with the name of the cookie,
+#   the user input value for this parameter and the expiry date.
+
+#6)
+#   Finally, we will return our response object, which contains the HTML for
+#   the rendered template, and our four cookie values. On loading the page
+#   our user's browser will save the four cookies, and we'll be able to retrieve
+#   the values if the same user visits our application again.
+
+################################################################################
+#                               Retrieving cookies                             #
+################################################################################
+
+#   We nned to check for the saved cookies when a user sends us a request.
+
+#   To retrieve the cookies values we use request.cookies.get()
+
+#   Our logic for the user input:
+#
+#   We still want explicit request to take the highest priority. If no
+#   explicit request is given we will look in the cookies to check wheather we
+#   can grab a default from there. Finally, if we still have nothing, we will
+#   use our hardcoded DEFAULTS.
+
+#7) This function implements our fallback logic. This function is called
+#   from the home() function.
